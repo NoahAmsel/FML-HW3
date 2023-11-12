@@ -127,7 +127,10 @@ if __name__ == "__main__":
     for fold_i, (train_ixs, val_ixs) in enumerate(
         KFold(n_splits=10).split(train_X_norm, train_y)
     ):
-        ada = AdaBoost(train_X_norm.loc[train_ixs].reset_index(drop=True), train_y.loc[train_ixs].reset_index(drop=True))
+        ada = AdaBoost(
+            train_X_norm.loc[train_ixs].reset_index(drop=True),
+            train_y.loc[train_ixs].reset_index(drop=True),
+        )
         for k in tqdm(range(10**3)):
             ada.step()
         validation_df[f"Val Err {fold_i}"] = pd.Series(
