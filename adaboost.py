@@ -127,13 +127,11 @@ if __name__ == "__main__":
     for fold_i, (train_ixs, val_ixs) in enumerate(
         KFold(n_splits=10).split(train_X_norm, train_y)
     ):
-        fold_X = train_X_norm.loc[train_ixs].reset_index(drop=True)
-        fold_y = train_y.loc[train_ixs].reset_index(drop=True)
-        ada = AdaBoost(fold_X, fold_y)
+        ada = AdaBoost(train_X_norm.loc[train_ixs].reset_index(drop=True), train_y.loc[train_ixs].reset_index(drop=True))
         for k in tqdm(range(10**3)):
             ada.step()
         validation_df[f"Val Err {fold_i}"] = pd.Series(
-            list(ada.running_error(fold_X, fold_y))
+            list(ada.running_error(train_X_norm.loc[val_ixs], train_y.loc[val_ixs]))
         )
 
     validation_df.to_csv("cross_validation.csv", index=False)
