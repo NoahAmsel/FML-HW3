@@ -1,8 +1,7 @@
 from itertools import chain, pairwise
 
-# import matplotlib.pyplot as plt
-
 # from joblib import Parallel, delayed
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
@@ -95,6 +94,16 @@ class AdaBoost:
             for i in range(len(self.hs))
         )
 
+    def running_label_prediction(self, test_X_df):
+        fX = np.zeros(len(test_X_df))
+        for alpha_i, h_i in zip(self.alpha, self.hs):
+            fX += alpha_i * self.stumps.eval_hypothesis(h_i, test_X_df)
+            yield fX > 0
+
+    def running_error(self, test_X_df, test_y):
+        for labels_t in self.running_label_prediction(test_X_df):
+            yield (labels_t != test_y).mean()
+
 
 if __name__ == "__main__":
     df = pd.read_csv("spambase.data.shuffled.csv", header=None)
@@ -118,16 +127,14 @@ if __name__ == "__main__":
     for fold_i, (train_ixs, val_ixs) in enumerate(
         KFold(n_splits=10).split(train_X_norm, train_y)
     ):
-        ada = AdaBoost(
-            train_X_norm.loc[train_ixs].reset_index(drop=True),
-            train_y.loc[train_ixs].reset_index(drop=True),
-        )
-        results = []
-        for k in tqdm(range(10**2)):
+        fold_X = train_X_norm.loc[train_ixs].reset_index(drop=True)
+        fold_y = train_y.loc[train_ixs].reset_index(drop=True)
+        ada = AdaBoost(fold_X, fold_y)
+        for k in tqdm(range(10**3)):
             ada.step()
-            val_preds = ada(train_X_norm.loc[val_ixs]) > 0
-            results.append(sum(val_preds != train_y[val_ixs]) / len(val_ixs))
-        validation_df[f"Val Err {fold_i}"] = pd.Series(results, dtype=float)
+        validation_df[f"Val Err {fold_i}"] = pd.Series(
+            list(ada.running_error(fold_X, fold_y))
+        )
 
     validation_df.to_csv("cross_validation.csv", index=False)
     validation_df = pd.read_csv("cross_validation.csv")
@@ -135,25 +142,31 @@ if __name__ == "__main__":
     validation_long = pd.wide_to_long(
         validation_df.reset_index(), "Val Err ", "index", "Fold"
     ).reset_index()
-    sns.lineplot(data=validation_long, x="index", y="Val Err ", errorbar="sd")
-
-
-if False:
-    X = pd.DataFrame(
-        dict(
-            x1=[0, 0, 2, 2, 4, 4, 6, 7, 7, 9, 10], x2=[2, 9, 5, 7, 4, 10, 1, 5, 7, 0, 2]
-        )
-    )
-    y = np.array(
-        [True, True, True, False, True, False, True, True, False, False, False]
+    validation_long.rename(
+        {"index": "t", "Val Err ": "Validation Error"}, inplace=True, axis=1
     )
 
-    # plt.scatter(x=X["x1"], y=X["x2"], c=y)
+    plt.figure()
+    sns.lineplot(data=validation_long, x="t", y="Validation Error", errorbar="sd")
+    plt.title("10-fold Cross-Validation Error")
+    plt.savefig("cross_validation.png", dpi=500)
 
-    ada = AdaBoost(X, y)
-    print("step")
-    ada.step()
-    print("step")
-    ada.step()
+    T_star = validation_df.mean(axis=1).argmin()
 
-    # print(ada.hs)
+    full_ada = AdaBoost(train_X_norm, train_y)
+    for k in tqdm(range(T_star)):
+        full_ada.step()
+    results_df = pd.DataFrame(
+        {
+            "Train Error": full_ada.running_error(train_X_norm, train_y),
+            "Test Error": full_ada.running_error(test_X_norm, test_y),
+        }
+    )
+
+    plt.figure()
+    plt.plot(results_df["Train Error"], label="Train Error")
+    plt.plot(results_df["Test Error"], label="Test Error")
+    plt.legend()
+    plt.title("Convergence of AdaGrad")
+    plt.xlabel("t")
+    plt.savefig("test_convergence.png", dpi=500)
